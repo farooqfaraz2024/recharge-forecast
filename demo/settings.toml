@@ -1,0 +1,85 @@
+# Demo settings for a FICTIONAL prepaid operator. Replace every number with your own.
+# Uncertainties are relative standard deviations: 0.10 = "probably within about ±10%".
+
+[forecast]
+month = "2026-12"
+currency = "AED"
+target_revenue = 90_000_000
+
+[base]
+# The active base is rolled forward from the last day in the history file.
+gross_adds_per_day = 1300
+gross_adds_uncertainty = 0.10
+daily_churn_rate = 0.0006          # share of the base lost per day
+daily_churn_uncertainty = 0.10
+
+[tourists]
+# Tourist (visitor) customers who recharge per day in an average month,
+# and the tourism factor for the forecast month (1.30 = 30% above average).
+recharging_per_day = 2200
+recharging_uncertainty = 0.15
+tourism_factor = 1.30
+tourism_factor_uncertainty = 0.10
+
+# Tourist figures for the history months (skip if the history file has a
+# tourist_customers column).
+[tourists.history."2025-12"]
+recharging_per_day = 2000
+tourism_factor = 1.25
+
+[tourists.history."2026-10"]
+recharging_per_day = 2100
+tourism_factor = 1.00
+
+[value]
+recharge_value_per_customer = 35.75
+value_uncertainty = 0.03
+
+# Revenue bracketing: share of recharging customers and their average recharge.
+[[value.brackets]]
+name = "Up to 10"
+avg_value = 10
+share = 0.30
+
+[[value.brackets]]
+name = "11-25"
+avg_value = 25
+share = 0.35
+
+[[value.brackets]]
+name = "26-50"
+avg_value = 50
+share = 0.22
+
+[[value.brackets]]
+name = "Above 50"
+avg_value = 100
+share = 0.13
+
+[salary]
+# Actual pay dates, moved earlier when they fall on a weekend. Include the month
+# before the earliest history month and the first date after the forecast month.
+dates = [
+  "2025-11-25", "2025-12-01", "2025-12-25", "2026-01-01",
+  "2026-09-25", "2026-10-01", "2026-10-23", "2026-10-30",
+  "2026-11-25", "2026-12-01", "2026-12-25", "2027-01-01",
+]
+
+# Events with their own effect. Confirm official holiday dates before use.
+[[events]]
+name = "National Day"
+dates = ["2025-12-02", "2025-12-03", "2026-12-02", "2026-12-03"]
+
+[[events]]
+name = "New Year's Eve"
+dates = ["2025-12-31", "2026-12-31"]
+
+[priors]
+year_drift_sd = 0.05    # recharge behaviour can move about ±5% in a year
+season_sd = 0.10        # another month can differ about ±10% from the forecast month
+effect_sd = 0.30
+
+[run]
+draws = 1000
+chains = 4
+seed = 7

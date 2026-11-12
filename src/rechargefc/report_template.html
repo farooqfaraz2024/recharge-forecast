@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recharge Forecast</title>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--ink:#1d1d1b;--muted:#6b6b66;--line:#e3e2dd;--accent:#2a6fdb;--band:rgba(42,111,219,.16);--good:#1f8a53;--warn:#b7791f;--bad:#c0392b;--ly:#8a8a84}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141413;--card:#1e1e1c;--ink:#ecebe6;--muted:#a3a29b;--line:#34332f;--accent:#6ea2ff;--band:rgba(110,162,255,.2);--good:#4cc38a;--warn:#e0a94a;--bad:#ff7b6b;--ly:#8f8e88}}
+:root[data-theme="dark"]{--bg:#141413;--card:#1e1e1c;--ink:#ecebe6;--muted:#a3a29b;--line:#34332f;--accent:#6ea2ff;--band:rgba(110,162,255,.2);--good:#4cc38a;--warn:#e0a94a;--bad:#ff7b6b;--ly:#8f8e88}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:28px 16px 8px;max-width:1120px;margin:auto}
+h1{font-size:26px;margin:0 0 4px}
+h2{font-size:18px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0}
+main{max-width:1120px;margin:auto;padding:8px 16px 48px}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 4px}
+nav a{font-size:13px;color:var(--muted);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+nav a:hover{color:var(--ink)}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin:16px 0}
+.lead{color:var(--muted);margin:0 0 14px;max-width:820px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.kpi{border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.kpi .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:650;margin-top:2px;font-variant-numeric:tabular-nums}
+.kpi .n{font-size:12px;color:var(--muted)}
+.chart{width:100%;height:380px}
+.chart.sm{height:300px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:820px){.grid2{grid-template-columns:1fr}}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);font-size:14px}
+th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+td.r,th.r{text-align:right}
+.tbl{overflow-x:auto}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:600}
+.ok{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+.wn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.bd{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+.toggle{float:right;font-size:12px;border:1px solid var(--line);background:none;color:var(--muted);border-radius:8px;padding:4px 10px;cursor:pointer}
+ul.plain{margin:6px 0 0;padding-left:18px}
+ul.plain li{margin:4px 0}
+code{font-size:13px;background:color-mix(in srgb,var(--line) 60%,transparent);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<header>
+  <button class="toggle" id="theme">Light / dark</button>
+  <h1 id="title">Recharge forecast</h1>
+  <p class="sub" id="subtitle"></p>
+  <nav>
+    <a href="#headline">Headline</a><a href="#daily">Daily</a><a href="#range">Range</a>
+    <a href="#inputs">Inputs</a><a href="#sensitivity">Sensitivity</a><a href="#effects">Learned effects</a>
+    <a href="#brackets">Brackets</a><a href="#checks">Checks</a><a href="#method">Method</a>
+  </nav>
+</header>
+<main>
+<section id="headline">
+  <h2>Headline</h2>
+  <p class="lead" id="headline-text"></p>
+  <div class="kpis" id="kpis"></div>
+</section>
+
+<section id="daily">
+  <h2>Daily recharge revenue</h2>
+  <p class="lead">Shaded band: 80% of simulations fall inside it (P10 to P90). Line: the middle forecast (P50). Grey: the same day last year. Solid dots: days already passed, kept as actuals.</p>
+  <div id="c-daily" class="chart"></div>
+</section>
+
+<section id="range">
+  <h2>Monthly total: the full range</h2>
+  <p class="lead" id="range-text"></p>
+  <div id="c-hist" class="chart sm"></div>
+</section>
+
+<section id="inputs">
+  <h2>Business inputs</h2>
+  <p class="lead">These are the planning team's figures. Each has a stated uncertainty, and every simulation draws a slightly different value, so the forecast range includes the doubt about the inputs, not only about the model.</p>
+  <div class="tbl"><table id="t-inputs"></table></div>
+  <p class="lead" id="calendar-text" style="margin-top:12px"></p>
+</section>
+
+<section id="sensitivity">
+  <h2>What moves the forecast</h2>
+  <p class="lead">Change in the middle forecast (P50) when each input is 10% lower or 10% higher, all else unchanged. The longest bars are the inputs worth getting right.</p>
+  <div id="c-sens" class="chart sm"></div>
+</section>
+
+<section id="effects">
+  <h2>What the model learned from history</h2>
+  <p class="lead">Effects on the share of active customers who recharge, compared with an ordinary day. +10% means 10% more recharging customers than usual. Bars show the middle estimate; whiskers show the 80% range.</p>
+  <div class="grid2">
+    <div id="c-salary" class="chart sm"></div>
+    <div id="c-dow" class="chart sm"></div>
+  </div>
+  <div class="grid2">
+    <div id="c-events" class="chart sm"></div>
+    <div id="c-other" class="chart sm"></div>
+  </div>
+</section>
+
+<section id="brackets">
+  <h2>Revenue by recharge bracket</h2>
+  <p class="lead" id="bracket-text"></p>
+  <div class="grid2">
+    <div class="tbl"><table id="t-brackets"></table></div>
+    <div id="c-brackets" class="chart sm"></div>
+  </div>
+</section>
+
+<section id="checks">
+  <h2>Checks</h2>
+  <p class="lead">A forecast is only useful if its ranges can be trusted. Three checks: does it predict days it has not seen, is it better than simple rules of thumb, and did the model fit properly.</p>
+  <div id="holdout-block"></div>
+  <div class="grid2" style="margin-top:12px">
+    <div><h2 style="font-size:15px">Simple benchmarks</h2><div class="tbl"><table id="t-bench"></table></div></div>
+    <div><h2 style="font-size:15px">Model fit</h2><div class="tbl"><table id="t-diag"></table></div></div>
+  </div>
+</section>
+
+<section id="method">
+  <h2>Method and caveats</h2>
+  <ul class="plain">
+    <li><b>Structure.</b> Recharging customers per day = active base × share who recharge + tourist customers. Revenue = recharging customers × value per customer.</li>
+    <li><b>Share who recharge</b> is learned from history: a level for the forecast month, plus day-of-week, salary-cycle and event effects, a difference for other calendar months, and a year-on-year drift.</li>
+    <li><b>Bayesian.</b> Each effect starts from a prior (how big it can plausibly be) and is updated by the data. The result is thousands of plausible parameter sets, not one best guess.</li>
+    <li><b>Simulation.</b> Each parameter set is combined with one draw of every business input. The active base is rolled forward day by day with gross adds and churn. Monthly totals are added up inside each simulation before ranges are taken.</li>
+    <li><b>Robust to odd days.</b> The model uses heavy-tailed (Student-t) noise, so an outage or data glitch does not distort it.</li>
+    <li><b>Limits.</b> With only two months of history, the year-on-year drift and the season difference are not separately known; their priors set how much doubt is carried into the forecast. Adding more months narrows the range. Events not listed in the settings (a new tariff, a campaign, a network incident) are not in the forecast.</li>
+  </ul>
+</section>
+</main>
+<script id="payload" type="application/json">__DATA__</script>
+<script>
+const D = JSON.parse(document.getElementById('payload').textContent);
+const S = D.summary, C = D.chart, cur = S.currency;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmtM = v => (v/1e6).toLocaleString(undefined,{maximumFractionDigits:1}) + 'M';
+const fmt0 = v => Math.round(v).toLocaleString();
+const pct = (v,d=0) => (v*100).toFixed(d) + '%';
+const eff = v => (Math.exp(v)-1);
+const sgnPct = v => (v>=0?'+':'') + (v*100).toFixed(1) + '%';
+
+document.getElementById('title').textContent = `Recharge forecast: ${S.month_label}`;
+document.getElementById('subtitle').textContent =
+  `Generated ${S.generated} · history: ${S.history.months.join(', ')} (${S.history.days} days)` +
+  (S.actual_days ? ` · ${S.actual_days} days of ${S.month_label} already actual` : '');
+
+const r = S.revenue;
+let h = `The middle forecast for ${S.month_label} is <b>${cur} ${fmtM(r.p50)}</b> in recharge revenue. ` +
+  `There is an 80% chance it lands between <b>${fmtM(r.p10)}</b> and <b>${fmtM(r.p90)}</b>.`;
+if (S.prob_reach_target !== null)
+  h += ` The chance of reaching the target of ${cur} ${fmtM(S.target_revenue)} is <b>${pct(S.prob_reach_target)}</b>.`;
+document.getElementById('headline-text').innerHTML = h;
+
+const kpis = [
+  ['P50 revenue', `${cur} ${fmtM(r.p50)}`, 'middle forecast'],
+  ['80% range', `${fmtM(r.p10)} – ${fmtM(r.p90)}`, 'P10 to P90'],
+  ['Chance of target', S.prob_reach_target===null?'–':pct(S.prob_reach_target), S.target_revenue?`target ${fmtM(S.target_revenue)}`:'no target set'],
+  ['Recharging customers / day', fmt0(S.customers_per_day_p50), 'P50, monthly average'],
+  ['Active base at month end', fmt0(S.base_end_p50), `from ${fmt0(S.base_start)} today`],
+];
+document.getElementById('kpis').innerHTML = kpis.map(k =>
+  `<div class="kpi"><div class="l">${k[0]}</div><div class="v">${k[1]}</div><div class="n">${k[2]}</div></div>`).join('');
+
+function layout(extra={}) {
+  const ink = css('--ink'), muted = css('--muted'), line = css('--line');
+  return Object.assign({
+    paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)',
+    font:{color:ink, family:'system-ui,-apple-system,Segoe UI,Roboto,sans-serif', size:12},
+    margin:{l:60,r:16,t:30,b:44}, hovermode:'x unified',
+    legend:{orientation:'h', y:1.12, x:0, font:{color:muted}},
+    xaxis:{gridcolor:line, zeroline:false, linecolor:line},
+    yaxis:{gridcolor:line, zeroline:false, linecolor:line},
+  }, extra);
+}
+const cfg = {displaylogo:false, responsive:true, modeBarButtonsToRemove:['lasso2d','select2d']};
+
+function draw() {
+  const accent = css('--accent'), band = css('--band'), ly = css('--ly'), bad = css('--bad'), good = css('--good');
+  const d = C.daily, x = d.date;
+  const fut = i => !d.actual[i];
+  Plotly.react('c-daily', [
+    {x, y:d.revenue_p90, type:'scatter', mode:'lines', line:{width:0}, hoverinfo:'skip', showlegend:false},
+    {x, y:d.revenue_p10, type:'scatter', mode:'lines', line:{width:0}, fill:'tonexty', fillcolor:band, name:'80% range', hovertemplate:'P10 %{y:,.0f}<extra></extra>'},
+    {x, y:d.revenue_p50, type:'scatter', mode:'lines', line:{color:accent, width:2.5}, name:'Forecast (P50)', hovertemplate:'P50 %{y:,.0f}<extra></extra>'},
+    {x, y:C.last_year, type:'scatter', mode:'lines', line:{color:ly, width:1.5, dash:'dot'}, name:'Same day last year', hovertemplate:'Last year %{y:,.0f}<extra></extra>'},
+    {x:x.filter((_,i)=>d.actual[i]), y:d.revenue_p50.filter((_,i)=>d.actual[i]), type:'scatter', mode:'markers', marker:{color:accent, size:7}, name:'Actual', hovertemplate:'Actual %{y:,.0f}<extra></extra>'},
+  ], layout({yaxis:{title:cur, gridcolor:css('--line'), tickformat:'.2s'}}), cfg);
+
+  const e = C.histogram.edges, mids = e.slice(0,-1).map((v,i)=>(v+e[i+1])/2);
+  const shapes = [r.p10, r.p50, r.p90].map((v,i)=>({type:'line', x0:v, x1:v, yref:'paper', y0:0, y1:1, line:{color:accent, width:i===1?2:1, dash:i===1?'solid':'dot'}}));
+  if (S.target_revenue) shapes.push({type:'line', x0:S.target_revenue, x1:S.target_revenue, yref:'paper', y0:0, y1:1, line:{color:bad, width:2}});
+  const ann = S.target_revenue ? [{x:S.target_revenue, yref:'paper', y:1.04, text:'Target', showarrow:false, font:{color:bad}}] : [];
+  Plotly.react('c-hist', [{x:mids, y:C.histogram.counts, type:'bar', marker:{color:band, line:{color:accent, width:1}}, hovertemplate:'%{x:,.3s}: %{y} simulations<extra></extra>'}],
+    layout({shapes, annotations:ann, bargap:0.02, hovermode:'closest', xaxis:{title:`Monthly recharge revenue (${cur})`, tickformat:'.3s', gridcolor:css('--line')}, yaxis:{title:'Simulations', gridcolor:css('--line')}}), cfg);
+
+  const sens = S.sensitivity.slice().reverse();
+  Plotly.react('c-sens', [
+    {y:sens.map(s=>s.driver), x:sens.map(s=>s.low), type:'bar', orientation:'h', name:'Input 10% lower', marker:{color:bad}, hovertemplate:'%{x:+,.3s}<extra>10% lower</extra>'},
+    {y:sens.map(s=>s.driver), x:sens.map(s=>s.high), type:'bar', orientation:'h', name:'Input 10% higher', marker:{color:good}, hovertemplate:'%{x:+,.3s}<extra>10% higher</extra>'},
+  ], layout({barmode:'overlay', hovermode:'closest', margin:{l:230,r:16,t:30,b:44}, xaxis:{title:`Change in P50 (${cur})`, tickformat:'.2s', gridcolor:css('--line'), zeroline:true, zerolinecolor:css('--muted')}}), cfg);
+
+  const effChart = (id, title, labels, q, color) => {
+    const mid = q.map(v=>eff(v[1])), lo = q.map(v=>eff(v[1])-eff(v[0])), hi = q.map(v=>eff(v[2])-eff(v[1]));
+    Plotly.react(id, [{x:labels, y:mid, type:'bar', marker:{color}, error_y:{type:'data', symmetric:false, array:hi, arrayminus:lo, color:css('--muted'), thickness:1.2, width:4},
+      hovertemplate:'%{x}: %{y:+.1%}<extra></extra>'}],
+      layout({title:{text:title, font:{size:14}, x:0}, hovermode:'closest', xaxis:{tickangle:0, automargin:true}, yaxis:{tickformat:'+.0%', gridcolor:css('--line'), zeroline:true, zerolinecolor:css('--muted')}}), cfg);
+  };
+  const E = S.effects;
+  effChart('c-salary', 'Salary cycle', E.salary.labels, E.salary.q, accent);
+  effChart('c-dow', 'Day of week', E.weekday.labels, E.weekday.q, accent);
+  if (E.events) effChart('c-events', 'Events', E.events.labels, E.events.q, good);
+  else document.getElementById('c-events').innerHTML = '<p class="lead">No events in the settings.</p>';
+  const oL = ['Year-on-year drift'], oQ = [E.drift];
+  if (E.season) E.season.labels.forEach((l,i)=>{ oL.push(`${l} vs ${S.month_label.split(' ')[0]}`); oQ.push(E.season.q[i]); });
+  effChart('c-other', 'Drift and other months', oL, oQ, ly);
+
+  const b = S.brackets;
+  Plotly.react('c-brackets', [{labels:b.map(x=>x.name), values:b.map(x=>x.revenue_p50), type:'pie', hole:.55, sort:false,
+    marker:{colors:[accent, good, css('--warn'), ly, bad]}, textinfo:'percent', hovertemplate:'%{label}: %{value:,.3s}<extra></extra>'}],
+    layout({hovermode:'closest', margin:{l:10,r:10,t:10,b:10}, showlegend:true, legend:{orientation:'v', font:{color:css('--muted')}}}), cfg);
+
+  const H = S.holdout;
+  if (H) {
+    Plotly.react('c-holdout', [
+      {x:H.daily.dates, y:H.daily.p90, type:'scatter', mode:'lines', line:{width:0}, hoverinfo:'skip', showlegend:false},
+      {x:H.daily.dates, y:H.daily.p10, type:'scatter', mode:'lines', line:{width:0}, fill:'tonexty', fillcolor:band, name:'80% range'},
+      {x:H.daily.dates, y:H.daily.p50, type:'scatter', mode:'lines', line:{color:accent, width:2}, name:'Forecast (P50)'},
+      {x:H.daily.dates, y:H.daily.actual, type:'scatter', mode:'markers', marker:{color:css('--ink'), size:7}, name:'Actual'},
+    ], layout({yaxis:{tickformat:'.2s', gridcolor:css('--line')}}), cfg);
+  }
+}
+
+// Tables
+const U = S.inputs;
+document.getElementById('t-inputs').innerHTML = '<tr><th>Input</th><th class="r">Value</th><th class="r">Uncertainty (±1 sd)</th></tr>' +
+  Object.entries(U).map(([k,v]) => `<tr><td>${k}</td><td class="r">${k.includes('churn') ? (v.value*100).toFixed(3)+'%' : v.value.toLocaleString()}</td><td class="r">${pct(v.rel_sd)}</td></tr>`).join('');
+const ev = S.events.filter(e=>e.dates.length).map(e=>`${e.name} (${e.dates.join(', ')})`).join('; ');
+document.getElementById('calendar-text').innerHTML =
+  `Salary dates in ${S.month_label}: ${S.salary_dates.join(', ') || 'none'}.` + (ev ? ` Events: ${ev}.` : '');
+
+const bv = S.bracket_value, vpc = U['Recharge value per customer'].value;
+document.getElementById('bracket-text').textContent =
+  `The P50 revenue split by bracket, using each bracket's share of recharging customers and its average recharge. ` +
+  `Brackets imply an average of ${cur} ${bv.toFixed(2)} per recharging customer` +
+  (Math.abs(bv - vpc)/vpc > 0.02 ? `, which differs from the ${vpc.toFixed(2)} used in the forecast: worth reconciling.` : `, in line with the value per customer used in the forecast.`);
+document.getElementById('t-brackets').innerHTML = `<tr><th>Bracket</th><th class="r">Avg value</th><th class="r">Customer share</th><th class="r">P50 revenue</th></tr>` +
+  S.brackets.map(b=>`<tr><td>${b.name}</td><td class="r">${b.avg_value}</td><td class="r">${pct(b.share)}</td><td class="r">${fmtM(b.revenue_p50)}</td></tr>`).join('');
+
+const H = S.holdout;
+if (H) {
+  const cov = H.daily_coverage_80, covCls = cov>=0.6 && cov<=1 ? 'ok' : 'wn';
+  const better = Math.abs(H.model_error_pct) <= Math.abs(H.naive_error_pct);
+  document.getElementById('holdout-block').innerHTML =
+    `<h2 style="font-size:15px">Holdout: the last ${H.days} days of history, hidden from the model</h2>
+     <p class="lead">The model was refitted without ${H.from} to ${H.to} and asked to forecast those days.
+     Actual total ${fmtM(H.actual_total)}; forecast P50 ${fmtM(H.p50)} (range ${fmtM(H.p10)} – ${fmtM(H.p90)}).</p>
+     <div class="tbl"><table>
+       <tr><th>Check</th><th class="r">Result</th><th class="r">Status</th></tr>
+       <tr><td>Days inside the 80% range (expect about 80%)</td><td class="r">${pct(cov)}</td><td class="r"><span class="pill ${covCls}">${covCls==='ok'?'OK':'Review'}</span></td></tr>
+       <tr><td>Total inside P10–P90</td><td class="r">${H.inside_p10_p90?'Yes':'No'}</td><td class="r"><span class="pill ${H.inside_p10_p90?'ok':'bd'}">${H.inside_p10_p90?'OK':'Review'}</span></td></tr>
+       <tr><td>Model error on the total</td><td class="r">${sgnPct(H.model_error_pct)}</td><td class="r"></td></tr>
+       <tr><td>Naive error (last 28-day average)</td><td class="r">${sgnPct(H.naive_error_pct)}</td><td class="r"><span class="pill ${better?'ok':'wn'}">${better?'Model better':'Naive better'}</span></td></tr>
+     </table></div><div id="c-holdout" class="chart sm"></div>`;
+} else {
+  document.getElementById('holdout-block').innerHTML = '<p class="lead">Holdout check skipped: not enough history.</p>';
+}
+document.getElementById('t-bench').innerHTML = '<tr><th>Method</th><th class="r">Forecast</th><th class="r">vs P50</th></tr>' +
+  Object.entries(S.benchmarks).map(([k,v])=>`<tr><td>${k}</td><td class="r">${fmtM(v)}</td><td class="r">${sgnPct(v/r.p50-1)}</td></tr>`).join('') +
+  `<tr><td><b>Bayesian model (P50)</b></td><td class="r"><b>${fmtM(r.p50)}</b></td><td class="r"></td></tr>`;
+const g = S.diagnostics;
+const st = ok => `<span class="pill ${ok?'ok':'bd'}">${ok?'OK':'Review'}</span>`;
+document.getElementById('t-diag').innerHTML = '<tr><th>Diagnostic</th><th class="r">Value</th><th class="r">Status</th></tr>' +
+  `<tr><td>Largest R-hat (chains agree; want &lt; 1.01)</td><td class="r">${g.max_rhat.toFixed(3)}</td><td class="r">${st(g.max_rhat<1.01)}</td></tr>` +
+  `<tr><td>Smallest effective draws (want &gt; 400)</td><td class="r">${fmt0(g.min_ess)}</td><td class="r">${st(g.min_ess>400)}</td></tr>` +
+  `<tr><td>Divergent transitions (want 0)</td><td class="r">${g.divergences}</td><td class="r">${st(g.divergences===0)}</td></tr>`;
+
+document.getElementById('range-text').innerHTML =
+  `Each bar counts simulated months. Blue lines: P10, P50, P90.` + (S.target_revenue ? ` Red line: target. Simulations to the right of it reach target: ${pct(S.prob_reach_target)}.` : '');
+
+draw();
+const root = document.documentElement;
+document.getElementById('theme').onclick = () => {
+  const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  root.dataset.theme = dark ? 'light' : 'dark';
+  draw();
+};
+</script>
+</body>
+</html>
